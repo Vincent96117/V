@@ -1,17 +1,26 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>⚡ SNIPER V3.0 OMEGA - SECURE ENGINE</title>
+    <title>⚡ SNIPER V3.1 OMEGA - STICKY ENGINE</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background: #000; color: #e4e4e7; font-family: 'JetBrains Mono', monospace; overflow: hidden; }
         .section-title { border-bottom: 2px solid #1a1a1a; padding-bottom: 8px; margin-bottom: 12px; font-weight: 900; font-size: 11px; text-transform: uppercase; }
-        .card { background: #09090b; border: 1px solid #18181b; border-left-width: 4px; }
+        .card { background: #09090b; border: 1px solid #18181b; border-left-width: 4px; position: relative; }
         .card-v { border-left-color: #ef4444; background: linear-gradient(90deg, #450a0a44, transparent); }
         .card-s { border-left-color: #10b981; background: linear-gradient(90deg, #064e3b44, transparent); }
         .card-normal { border-left-color: #3b82f6; }
-        .speed-blink { animation: blink 0.5s infinite; color: #ff4444 !important; font-weight: 900; }
-        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        
+        /* 呼吸燈效果 */
+        .sync-led { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+        .led-warmup { background: #eab308; animation: pulse 1s infinite; }
+        .led-active { background: #3b82f6; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.3; transform: scale(1.2); } 100% { opacity: 1; transform: scale(1); } }
+        
+        .speed-blink { animation: alert-blink 0.5s infinite; color: #ff4444 !important; font-weight: 900; }
+        @keyframes alert-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        
+        .time-tag { font-size: 8px; color: #52525b; position: absolute; bottom: 4px; right: 8px; }
         ::-webkit-scrollbar { width: 3px; }
         ::-webkit-scrollbar-thumb { background: #27272a; }
     </style>
@@ -19,44 +28,50 @@
 <body class="flex h-screen p-3 gap-3">
 
     <div class="flex-1 flex flex-col bg-zinc-950 p-3 border border-zinc-900 rounded-xl">
-        <div class="section-title text-blue-500">🚀 領航強勢 (TOP 10)</div>
+        <div class="section-title text-blue-500 flex justify-between">
+            <span>🚀 領航強勢 (Top 10)</span>
+            <div id="main-status"><span class="sync-led led-warmup"></span><span class="text-[9px]">WARMUP</span></div>
+        </div>
         <div id="strong-list" class="flex-1 overflow-y-auto space-y-2 mb-4"></div>
-        <div class="section-title text-zinc-600 italic">📡 蓄勢候補</div>
-        <div id="backup-list" class="h-1/3 overflow-y-auto space-y-2 opacity-40"></div>
+        <div class="section-title text-zinc-600 italic text-[9px]">📡 蓄勢候補</div>
+        <div id="backup-list" class="h-1/4 overflow-y-auto space-y-2 opacity-40"></div>
     </div>
 
-    <div class="w-80 flex flex-col bg-zinc-950 p-3 border border-zinc-900 rounded-xl">
+    <div class="flex-1 flex flex-col bg-zinc-950 p-3 border border-zinc-900 rounded-xl">
         <div class="section-title text-red-500 flex justify-between">
-            <span>🎯 V-SNIPER</span>
-            <span id="v-status" class="text-[9px] text-zinc-600">WATCHING</span>
+            <span>🎯 V-SNIPER (5M Sticky)</span>
+            <span id="v-count" class="text-[9px] text-zinc-600">0 ACTIVE</span>
         </div>
-        <div id="v-list" class="flex-1 overflow-y-auto space-y-2 text-red-100"></div>
+        <div id="v-list" class="flex-1 overflow-y-auto space-y-2"></div>
     </div>
 
-    <div class="w-80 flex flex-col bg-zinc-950 p-3 border border-zinc-900 rounded-xl">
+    <div class="flex-1 flex flex-col bg-zinc-950 p-3 border border-zinc-900 rounded-xl">
         <div class="section-title text-emerald-500 flex justify-between">
-            <span>📐 SQUEEZE</span>
-            <span id="s-status" class="text-[9px] text-zinc-600">SENSING</span>
+            <span>📐 SQUEEZE (5M Sticky)</span>
+            <span id="s-count" class="text-[9px] text-zinc-600">0 ACTIVE</span>
         </div>
-        <div id="s-list" class="flex-1 overflow-y-auto space-y-2 text-emerald-100"></div>
+        <div id="s-list" class="flex-1 overflow-y-auto space-y-2"></div>
     </div>
 
 <script>
     const EXCLUDE = ['BTCUSDT','ETHUSDT','SOLUSDT','XRPUSDT','BNBUSDT','BNXUSDT'];
     let stats = {}, baselineData = {};
     let isInitialized = false;
+    
+    // 記憶緩衝區：存儲觸發的幣及其過期時間
+    let vSticky = new Map(); 
+    let sSticky = new Map();
+    const STICKY_TIME = 5 * 60 * 1000; // 5分鐘
 
-    // --- 嚴格序列化抓取：一次只抓一隻幣的一個動作 ---
     async function getSymbolDataSecure(s) {
         try {
-            // 分開請求，不使用 Promise.all，徹底降低瞬時併發
             const kRes = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=1d&limit=5`);
             const k = await kRes.json();
-            await new Promise(r => setTimeout(r, 50)); // 呼吸停頓
+            await new Promise(r => setTimeout(r, 60));
 
             const hRes = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=1h&limit=120`);
             const h = await hRes.json();
-            await new Promise(r => setTimeout(r, 50)); // 呼吸停頓
+            await new Promise(r => setTimeout(r, 60));
 
             const tRes = await fetch(`https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=${s}`);
             const t24 = await tRes.json();
@@ -69,94 +84,105 @@
                 avgTradesHr: h.reduce((a,c)=>a+parseInt(c[8]),0)/120, 
                 wap24h: parseFloat(t24.weightedAvgPrice) 
             };
-        } catch(e) { console.error(`Error on ${s}`); }
+        } catch(e) {}
     }
 
-    function processEngines(s, pNow, currentTrades) {
+    function analyzeEngine(s, pNow, currentTrades) {
         if(!stats[s].engine) stats[s].engine = { td:0, type:null, prices:[], sumTrades:0, countTicks:0 };
         let eng = stats[s].engine;
-
-        // TD 邏輯與基準重置
         eng.prices.push(pNow); if(eng.prices.length > 5) eng.prices.shift();
         if(eng.prices.length === 5) {
             let ref = eng.prices[0];
             let newType = (pNow < ref) ? 'buy' : 'sell';
             if(newType !== eng.type) {
                 eng.td = 1; eng.type = newType;
-                eng.sumTrades = 0; eng.countTicks = 0; // 轉向立刻重置起跌點基準
+                eng.sumTrades = 0; eng.countTicks = 0;
             } else { eng.td++; }
         }
-
-        // 心跳基準計算
         let tickTrades = Math.max(0, currentTrades - (stats[s].lastTrades || currentTrades));
         stats[s].lastTrades = currentTrades;
         eng.sumTrades += tickTrades; eng.countTicks++;
         let avgBase = eng.sumTrades / eng.countTicks;
-        
         return { td: eng.td, pulse: tickTrades / (avgBase || 1) };
     }
 
     async function update() {
         if(!isInitialized) return;
         try {
-            // 每 3 秒只發送這兩個核心大封包，監控全市場
             const [fRes, tRes] = await Promise.all([
                 fetch('https://fapi.binance.com/fapi/v1/premiumIndex'),
                 fetch('https://fapi.binance.com/fapi/v1/ticker/24hr')
             ]);
             const fData = await fRes.json(), tData = await tRes.json(), tMap = new Map(tData.map(t=>[t.symbol,t]));
-            
-            let originalPool = [], vPool = [], sPool = [];
+            const now = Date.now();
+            let originalPool = [];
 
             fData.forEach(c => {
                 const s = c.symbol;
                 if(!s.endsWith('USDT') || EXCLUDE.includes(s) || !baselineData[s]) return;
-                
                 const funding = parseFloat(c.lastFundingRate);
-                if(Math.abs(funding) < 0.0005) return; // 資費 0.05%
-
-                if(!stats[s]) stats[s] = { startTrades: parseInt(tMap.get(s).count), startTime: Date.now() };
+                if(Math.abs(funding) < 0.0005) return; 
 
                 const t = tMap.get(s);
                 const pNow = parseFloat(t.lastPrice);
-                const hScore = ((parseInt(t.count)-stats[s].startTrades)*(60/Math.max(1,(Date.now()-stats[s].startTime)/60000)))/baselineData[s].avgTradesHr;
+                if(!stats[s]) stats[s] = { startTrades: parseInt(t.count), startTime: now };
+
+                const hScore = ((parseInt(t.count)-stats[s].startTrades)*(60/Math.max(1,(now-stats[s].startTime)/60000)))/baselineData[s].avgTradesHr;
                 const vScore = ((parseFloat(t.highPrice)-parseFloat(t.lowPrice))/parseFloat(t.openPrice))/baselineData[s].avgAmp;
                 const distVWAP = ((pNow / baselineData[s].wap24h) - 1) * 100;
+                const eng = analyzeEngine(s, pNow, parseInt(t.count));
 
-                const eng = processEngines(s, pNow, parseInt(t.count));
-
-                // 1. 領航榜
+                // 領航榜
                 originalPool.push({ s, pNow, hScore, vScore, score: (vScore*0.5 + hScore*0.5) });
 
-                // 2. V-SNIPER (TD 13+ 且 3倍心跳)
-                if(eng.td >= 13 && eng.pulse > 3.0) vPool.push({ s, pNow, td: eng.td, pulse: eng.pulse });
+                // V-SNIPER 判定 (符合就更新/加入 Sticky)
+                if(eng.td >= 13 && eng.pulse > 3.0) {
+                    vSticky.set(s, { pNow, td: eng.td, pulse: eng.pulse, expiry: now + STICKY_TIME });
+                }
 
-                // 3. SQUEEZE (窒息 < 0.35 且 貼合均價 < 0.3%)
-                if(vScore < 0.35 && Math.abs(distVWAP) < 0.3) sPool.push({ s, pNow, vScore, distVWAP });
+                // SQUEEZE 判定 (符合就更新/加入 Sticky)
+                if(vScore < 0.35 && Math.abs(distVWAP) < 0.3) {
+                    sSticky.set(s, { pNow, vScore, distVWAP, expiry: now + STICKY_TIME });
+                }
             });
 
-            render(originalPool, vPool, sPool);
+            // 清理過期的 Sticky
+            for (let [s, data] of vSticky) { if (now > data.expiry) vSticky.delete(s); }
+            for (let [s, data] of sSticky) { if (now > data.expiry) sSticky.delete(s); }
+
+            render(originalPool, vSticky, sSticky);
         } catch(e) {}
     }
 
-    function render(orig, v, s) {
+    function render(orig, vMap, sMap) {
+        // 渲染領航
         orig.sort((a,b)=>b.score-a.score);
         renderList(orig.slice(0,10), 'strong-list', 'card-normal');
-        renderList(orig.slice(10,20), 'backup-list', 'card-normal');
+        renderList(orig.slice(10,18), 'backup-list', 'card-normal');
 
+        // 渲染 V-SNIPER (Sticky)
         const vEl = document.getElementById('v-list'); vEl.innerHTML = '';
-        v.sort((a,b)=>b.pulse-a.pulse).slice(0,10).forEach(i => {
+        const vArr = Array.from(vMap.entries()).sort((a,b)=>b[1].pulse - a[1].pulse);
+        document.getElementById('v-count').innerText = `${vArr.length} ACTIVE`;
+        vArr.forEach(([s, i]) => {
+            const timeLeft = Math.round((i.expiry - Date.now())/1000);
             vEl.innerHTML += `<div class="card p-3 rounded-lg card-v mb-2">
-                <div class="flex justify-between font-black"><span>${i.s.replace('USDT','')}</span><span class="text-red-500">TD ${i.td}</span></div>
-                <div class="flex justify-between mt-2 font-bold"><span class="speed-blink text-[12px]">PULSE: ${i.pulse.toFixed(1)}X</span><span>$${i.pNow.toFixed(4)}</span></div>
+                <div class="flex justify-between font-black"><span>${s.replace('USDT','')}</span><span class="text-red-500 text-[10px]">TD ${i.td}</span></div>
+                <div class="flex justify-between mt-2 font-bold"><span class="speed-blink text-[12px]">PULSE: ${i.pulse.toFixed(1)}X</span><span class="text-[11px]">$${i.pNow.toFixed(4)}</span></div>
+                <div class="time-tag">EXIT IN ${timeLeft}S</div>
             </div>`;
         });
 
+        // 渲染 SQUEEZE (Sticky)
         const sEl = document.getElementById('s-list'); sEl.innerHTML = '';
-        s.sort((a,b)=>a.vScore-b.vScore).slice(0,10).forEach(i => {
+        const sArr = Array.from(sMap.entries()).sort((a,b)=>a[1].vScore - b[1].vScore);
+        document.getElementById('s-count').innerText = `${sArr.length} ACTIVE`;
+        sArr.forEach(([s, i]) => {
+            const timeLeft = Math.round((i.expiry - Date.now())/1000);
             sEl.innerHTML += `<div class="card p-3 rounded-lg card-s mb-2">
-                <div class="flex justify-between font-black text-white"><span>${i.s.replace('USDT','')}</span><span class="text-emerald-500">SQUEEZE</span></div>
+                <div class="flex justify-between font-black text-white"><span>${s.replace('USDT','')}</span><span class="text-emerald-500 text-[9px]">SQUEEZE</span></div>
                 <div class="flex justify-between mt-2 text-[10px] font-bold"><span>VOL: ${i.vScore.toFixed(2)}X</span><span>VWAP: ${i.distVWAP.toFixed(2)}%</span></div>
+                <div class="time-tag">EXIT IN ${timeLeft}S</div>
             </div>`;
         });
     }
@@ -164,7 +190,7 @@
     function renderList(items, id, cls) {
         const el = document.getElementById(id); el.innerHTML = '';
         items.forEach(i => {
-            el.innerHTML += `<div class="card p-3 rounded-lg ${cls} mb-2">
+            el.innerHTML += `<div class="card p-3 rounded-lg ${cls} mb-2 text-[11px]">
                 <div class="flex justify-between font-bold text-white"><span>${i.s.replace('USDT','')}</span><span>$${i.pNow.toFixed(4)}</span></div>
                 <div class="flex justify-between text-[9px] mt-1 text-zinc-500"><span>💓 ${i.hScore.toFixed(1)}X</span><span>🌊 ${i.vScore.toFixed(1)}X</span></div>
             </div>`;
@@ -175,12 +201,12 @@
         const data = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr').then(r=>r.json());
         const targets = data.filter(s => s.symbol.endsWith('USDT') && !EXCLUDE.includes(s.symbol)).sort((a,b)=>b.quoteVolume-a.quoteVolume).slice(0, 120);
         
-        // 嚴格序列化初始化，每隻幣中間都有停頓
         for (const target of targets) {
             await getSymbolDataSecure(target.symbol);
         }
         
         isInitialized = true;
+        document.getElementById('main-status').innerHTML = '<span class="sync-led led-active"></span><span class="text-[9px]">LIVE SCAN</span>';
         setInterval(update, 3000);
     }
     init();

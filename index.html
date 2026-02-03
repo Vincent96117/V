@@ -1,108 +1,95 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>⚡ SNIPER V3.1 OMEGA - STICKY ENGINE</title>
+    <title>⚡ SNIPER V3.5 OMEGA - COMMANDER</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background: #000; color: #e4e4e7; font-family: 'JetBrains Mono', monospace; overflow: hidden; }
         .section-title { border-bottom: 2px solid #1a1a1a; padding-bottom: 8px; margin-bottom: 12px; font-weight: 900; font-size: 11px; text-transform: uppercase; }
-        .card { background: #09090b; border: 1px solid #18181b; border-left-width: 4px; position: relative; }
-        .card-v { border-left-color: #ef4444; background: linear-gradient(90deg, #450a0a44, transparent); }
-        .card-s { border-left-color: #10b981; background: linear-gradient(90deg, #064e3b44, transparent); }
-        .card-normal { border-left-color: #3b82f6; }
+        .card { background: #09090b; border: 1px solid #18181b; border-left-width: 4px; transition: all 0.3s; position: relative; }
+        .card-v { border-left-color: #ef4444; }
+        .card-s { border-left-color: #10b981; }
         
-        /* 呼吸燈效果 */
+        /* 進場閃爍 */
+        .fire-alert { border: 2px solid #f0abfc; background: linear-gradient(90deg, #701a75, transparent); animation: fire 0.4s infinite; }
+        @keyframes fire { 0%, 100% { opacity: 1; transform: scale(1.01); } 50% { opacity: 0.7; } }
+        
         .sync-led { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
         .led-warmup { background: #eab308; animation: pulse 1s infinite; }
         .led-active { background: #3b82f6; animation: pulse 2s infinite; }
-        @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.3; transform: scale(1.2); } 100% { opacity: 1; transform: scale(1); } }
-        
-        .speed-blink { animation: alert-blink 0.5s infinite; color: #ff4444 !important; font-weight: 900; }
-        @keyframes alert-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
         
         .time-tag { font-size: 8px; color: #52525b; position: absolute; bottom: 4px; right: 8px; }
-        ::-webkit-scrollbar { width: 3px; }
-        ::-webkit-scrollbar-thumb { background: #27272a; }
     </style>
 </head>
 <body class="flex h-screen p-3 gap-3">
 
     <div class="flex-1 flex flex-col bg-zinc-950 p-3 border border-zinc-900 rounded-xl">
         <div class="section-title text-blue-500 flex justify-between">
-            <span>🚀 領航強勢 (Top 10)</span>
-            <div id="main-status"><span class="sync-led led-warmup"></span><span class="text-[9px]">WARMUP</span></div>
+            <span>🚀 領航強勢</span>
+            <div id="status-led"><span class="sync-led led-warmup"></span><span id="status-text" class="text-[9px]">WARMUP</span></div>
         </div>
-        <div id="strong-list" class="flex-1 overflow-y-auto space-y-2 mb-4"></div>
-        <div class="section-title text-zinc-600 italic text-[9px]">📡 蓄勢候補</div>
-        <div id="backup-list" class="h-1/4 overflow-y-auto space-y-2 opacity-40"></div>
+        <div id="strong-list" class="flex-1 overflow-y-auto space-y-2"></div>
     </div>
 
     <div class="flex-1 flex flex-col bg-zinc-950 p-3 border border-zinc-900 rounded-xl">
         <div class="section-title text-red-500 flex justify-between">
-            <span>🎯 V-SNIPER (5M Sticky)</span>
-            <span id="v-count" class="text-[9px] text-zinc-600">0 ACTIVE</span>
+            <span>🎯 V-SNIPER (6M TD)</span>
+            <span id="v-count" class="text-[9px]">0 ACTIVE</span>
         </div>
         <div id="v-list" class="flex-1 overflow-y-auto space-y-2"></div>
     </div>
 
     <div class="flex-1 flex flex-col bg-zinc-950 p-3 border border-zinc-900 rounded-xl">
         <div class="section-title text-emerald-500 flex justify-between">
-            <span>📐 SQUEEZE (5M Sticky)</span>
-            <span id="s-count" class="text-[9px] text-zinc-600">0 ACTIVE</span>
+            <span>📐 SQUEEZE (VWAP)</span>
+            <span id="s-count" class="text-[9px]">0 ACTIVE</span>
         </div>
         <div id="s-list" class="flex-1 overflow-y-auto space-y-2"></div>
     </div>
 
 <script>
     const EXCLUDE = ['BTCUSDT','ETHUSDT','SOLUSDT','XRPUSDT','BNBUSDT','BNXUSDT'];
-    let stats = {}, baselineData = {};
-    let isInitialized = false;
-    
-    // 記憶緩衝區：存儲觸發的幣及其過期時間
-    let vSticky = new Map(); 
-    let sSticky = new Map();
-    const STICKY_TIME = 5 * 60 * 1000; // 5分鐘
+    let stats = {}, baselineData = {}, isInitialized = false;
+    let vSticky = new Map(), sSticky = new Map();
+    const STICKY_TIME = 5 * 60 * 1000;
 
     async function getSymbolDataSecure(s) {
         try {
-            const kRes = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=1d&limit=5`);
-            const k = await kRes.json();
+            const k = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=1d&limit=5`).then(r=>r.json());
             await new Promise(r => setTimeout(r, 60));
-
-            const hRes = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=1h&limit=120`);
-            const h = await hRes.json();
+            const h = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${s}&interval=1h&limit=120`).then(r=>r.json());
             await new Promise(r => setTimeout(r, 60));
-
-            const tRes = await fetch(`https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=${s}`);
-            const t24 = await tRes.json();
-
+            const t24 = await fetch(`https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=${s}`).then(r=>r.json());
+            
             let tV=0, tQ=0, tA=0; 
             k.forEach(v=>{ tA+=(v[2]-v[3])/v[1]; tV+=parseFloat(v[5]); tQ+=parseFloat(v[7]); });
-            baselineData[s] = { 
-                avgAmp: tA/5, 
-                wap5d: tQ/tV, 
-                avgTradesHr: h.reduce((a,c)=>a+parseInt(c[8]),0)/120, 
-                wap24h: parseFloat(t24.weightedAvgPrice) 
-            };
+            baselineData[s] = { avgAmp: tA/5, avgTradesHr: h.reduce((a,c)=>a+parseInt(c[8]),0)/120, wap24h: parseFloat(t24.weightedAvgPrice) };
         } catch(e) {}
     }
 
     function analyzeEngine(s, pNow, currentTrades) {
         if(!stats[s].engine) stats[s].engine = { td:0, type:null, prices:[], sumTrades:0, countTicks:0 };
         let eng = stats[s].engine;
-        eng.prices.push(pNow); if(eng.prices.length > 5) eng.prices.shift();
-        if(eng.prices.length === 5) {
-            let ref = eng.prices[0];
+        
+        // 關鍵：對齊 5-10 分鐘趨勢厚度 (120週期 = 6分鐘)
+        eng.prices.push(pNow); 
+        if(eng.prices.length > 120) eng.prices.shift(); 
+        
+        if(eng.prices.length === 120) {
+            let ref = eng.prices[0]; 
             let newType = (pNow < ref) ? 'buy' : 'sell';
             if(newType !== eng.type) {
                 eng.td = 1; eng.type = newType;
-                eng.sumTrades = 0; eng.countTicks = 0;
+                eng.sumTrades = 0; eng.countTicks = 0; // 重置起跌點基準
             } else { eng.td++; }
         }
+
         let tickTrades = Math.max(0, currentTrades - (stats[s].lastTrades || currentTrades));
         stats[s].lastTrades = currentTrades;
         eng.sumTrades += tickTrades; eng.countTicks++;
         let avgBase = eng.sumTrades / eng.countTicks;
+        
         return { td: eng.td, pulse: tickTrades / (avgBase || 1) };
     }
 
@@ -118,13 +105,11 @@
             let originalPool = [];
 
             fData.forEach(c => {
-                const s = c.symbol;
-                if(!s.endsWith('USDT') || EXCLUDE.includes(s) || !baselineData[s]) return;
+                const s = c.symbol; if(!s.endsWith('USDT') || EXCLUDE.includes(s) || !baselineData[s]) return;
                 const funding = parseFloat(c.lastFundingRate);
                 if(Math.abs(funding) < 0.0005) return; 
 
-                const t = tMap.get(s);
-                const pNow = parseFloat(t.lastPrice);
+                const t = tMap.get(s); const pNow = parseFloat(t.lastPrice);
                 if(!stats[s]) stats[s] = { startTrades: parseInt(t.count), startTime: now };
 
                 const hScore = ((parseInt(t.count)-stats[s].startTrades)*(60/Math.max(1,(now-stats[s].startTime)/60000)))/baselineData[s].avgTradesHr;
@@ -132,67 +117,63 @@
                 const distVWAP = ((pNow / baselineData[s].wap24h) - 1) * 100;
                 const eng = analyzeEngine(s, pNow, parseInt(t.count));
 
-                // 領航榜
                 originalPool.push({ s, pNow, hScore, vScore, score: (vScore*0.5 + hScore*0.5) });
 
-                // V-SNIPER 判定 (符合就更新/加入 Sticky)
-                if(eng.td >= 13 && eng.pulse > 3.0) {
+                // V-SNIPER 判定
+                if(eng.td >= 13 && eng.pulse > 2.5) {
                     vSticky.set(s, { pNow, td: eng.td, pulse: eng.pulse, expiry: now + STICKY_TIME });
                 }
-
-                // SQUEEZE 判定 (符合就更新/加入 Sticky)
+                // SQUEEZE 判定
                 if(vScore < 0.35 && Math.abs(distVWAP) < 0.3) {
-                    sSticky.set(s, { pNow, vScore, distVWAP, expiry: now + STICKY_TIME });
+                    sSticky.set(s, { pNow, vScore, distVWAP, pulse: eng.pulse, expiry: now + STICKY_TIME });
                 }
             });
 
-            // 清理過期的 Sticky
-            for (let [s, data] of vSticky) { if (now > data.expiry) vSticky.delete(s); }
-            for (let [s, data] of sSticky) { if (now > data.expiry) sSticky.delete(s); }
-
+            for (let [s, d] of vSticky) { if (now > d.expiry) vSticky.delete(s); }
+            for (let [s, d] of sSticky) { if (now > d.expiry) sSticky.delete(s); }
             render(originalPool, vSticky, sSticky);
         } catch(e) {}
     }
 
     function render(orig, vMap, sMap) {
-        // 渲染領航
         orig.sort((a,b)=>b.score-a.score);
-        renderList(orig.slice(0,10), 'strong-list', 'card-normal');
-        renderList(orig.slice(10,18), 'backup-list', 'card-normal');
-
-        // 渲染 V-SNIPER (Sticky)
-        const vEl = document.getElementById('v-list'); vEl.innerHTML = '';
-        const vArr = Array.from(vMap.entries()).sort((a,b)=>b[1].pulse - a[1].pulse);
-        document.getElementById('v-count').innerText = `${vArr.length} ACTIVE`;
-        vArr.forEach(([s, i]) => {
-            const timeLeft = Math.round((i.expiry - Date.now())/1000);
-            vEl.innerHTML += `<div class="card p-3 rounded-lg card-v mb-2">
-                <div class="flex justify-between font-black"><span>${s.replace('USDT','')}</span><span class="text-red-500 text-[10px]">TD ${i.td}</span></div>
-                <div class="flex justify-between mt-2 font-bold"><span class="speed-blink text-[12px]">PULSE: ${i.pulse.toFixed(1)}X</span><span class="text-[11px]">$${i.pNow.toFixed(4)}</span></div>
-                <div class="time-tag">EXIT IN ${timeLeft}S</div>
+        const sList = document.getElementById('strong-list'); sList.innerHTML = '';
+        orig.slice(0,12).forEach(i => {
+            sList.innerHTML += `<div class="card p-2 rounded border-l-blue-500 mb-1 text-[11px]">
+                <div class="flex justify-between"><b>${i.s.replace('USDT','')}</b><span>$${i.pNow.toFixed(4)}</span></div>
+                <div class="flex justify-between text-[9px] text-zinc-500"><span>⚡ ${i.hScore.toFixed(1)}X</span><span>🌊 ${i.vScore.toFixed(1)}X</span></div>
             </div>`;
         });
 
-        // 渲染 SQUEEZE (Sticky)
-        const sEl = document.getElementById('s-list'); sEl.innerHTML = '';
-        const sArr = Array.from(sMap.entries()).sort((a,b)=>a[1].vScore - b[1].vScore);
-        document.getElementById('s-count').innerText = `${sArr.length} ACTIVE`;
-        sArr.forEach(([s, i]) => {
-            const timeLeft = Math.round((i.expiry - Date.now())/1000);
-            sEl.innerHTML += `<div class="card p-3 rounded-lg card-s mb-2">
-                <div class="flex justify-between font-black text-white"><span>${s.replace('USDT','')}</span><span class="text-emerald-500 text-[9px]">SQUEEZE</span></div>
-                <div class="flex justify-between mt-2 text-[10px] font-bold"><span>VOL: ${i.vScore.toFixed(2)}X</span><span>VWAP: ${i.distVWAP.toFixed(2)}%</span></div>
-                <div class="time-tag">EXIT IN ${timeLeft}S</div>
+        const vList = document.getElementById('v-list'); vList.innerHTML = '';
+        Array.from(vMap.entries()).sort((a,b)=>b[1].pulse - a[1].pulse).forEach(([s, i]) => {
+            const isFire = i.pulse >= 5.0 && i.td >= 13;
+            vList.innerHTML += `<div class="card p-3 rounded card-v mb-2 ${isFire?'fire-alert':''}">
+                <div class="flex justify-between font-black">
+                    <span>${s.replace('USDT','')} ${isFire?'<span class="text-white bg-fuchsia-600 px-1 rounded">🔥 FIRE</span>':''}</span>
+                    <span class="${i.td>=13?'text-red-500 underline':''}">TD ${i.td}</span>
+                </div>
+                <div class="flex justify-between mt-2 font-bold">
+                    <span class="${i.pulse>=5?'text-fuchsia-400 text-[14px]':'text-zinc-400'}">PULSE: ${i.pulse.toFixed(1)}X</span>
+                    <span>$${i.pNow.toFixed(4)}</span>
+                </div>
+                <div class="time-tag">EXIT IN ${Math.round((i.expiry-Date.now())/1000)}S</div>
             </div>`;
         });
-    }
 
-    function renderList(items, id, cls) {
-        const el = document.getElementById(id); el.innerHTML = '';
-        items.forEach(i => {
-            el.innerHTML += `<div class="card p-3 rounded-lg ${cls} mb-2 text-[11px]">
-                <div class="flex justify-between font-bold text-white"><span>${i.s.replace('USDT','')}</span><span>$${i.pNow.toFixed(4)}</span></div>
-                <div class="flex justify-between text-[9px] mt-1 text-zinc-500"><span>💓 ${i.hScore.toFixed(1)}X</span><span>🌊 ${i.vScore.toFixed(1)}X</span></div>
+        const sListEl = document.getElementById('s-list'); sListEl.innerHTML = '';
+        Array.from(sMap.entries()).sort((a,b)=>a[1].vScore - b[1].vScore).forEach(([s, i]) => {
+            const isFire = i.pulse >= 3.5;
+            sListEl.innerHTML += `<div class="card p-3 rounded card-s mb-2 ${isFire?'fire-alert':''}">
+                <div class="flex justify-between font-black">
+                    <span>${s.replace('USDT','')} ${isFire?'<span class="text-white bg-emerald-600 px-1 rounded">🔥 FIRE</span>':''}</span>
+                    <span class="text-emerald-500">SQUEEZE</span>
+                </div>
+                <div class="flex justify-between mt-2 text-[10px] font-bold">
+                    <span class="${isFire?'text-emerald-400 text-[12px]':''}">PULSE: ${i.pulse.toFixed(1)}X</span>
+                    <span>VWAP: ${i.distVWAP.toFixed(2)}%</span>
+                </div>
+                <div class="time-tag">EXIT IN ${Math.round((i.expiry-Date.now())/1000)}S</div>
             </div>`;
         });
     }
@@ -200,13 +181,9 @@
     async function init() {
         const data = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr').then(r=>r.json());
         const targets = data.filter(s => s.symbol.endsWith('USDT') && !EXCLUDE.includes(s.symbol)).sort((a,b)=>b.quoteVolume-a.quoteVolume).slice(0, 120);
-        
-        for (const target of targets) {
-            await getSymbolDataSecure(target.symbol);
-        }
-        
+        for (const target of targets) { await getSymbolDataSecure(target.symbol); }
         isInitialized = true;
-        document.getElementById('main-status').innerHTML = '<span class="sync-led led-active"></span><span class="text-[9px]">LIVE SCAN</span>';
+        document.getElementById('status-led').innerHTML = '<span class="sync-led led-active"></span><span class="text-[9px]">LIVE SCAN</span>';
         setInterval(update, 3000);
     }
     init();
